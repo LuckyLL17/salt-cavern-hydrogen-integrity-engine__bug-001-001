@@ -1,6 +1,6 @@
 import { DomainError } from '../errors.ts';
 import { COMPONENTS, type Composition } from '../types.ts';
-import type { LedgerState } from './ledger.ts';
+import type { AppliedTransfer, LedgerState } from './ledger.ts';
 import { molesToAmount } from './units.ts';
 
 export type Reconciliation = {
@@ -9,12 +9,25 @@ export type Reconciliation = {
   largestVarianceComponent: string | null; varianceNormMol: number;
 };
 
-export function summarizeInventory(state: LedgerState): { totalMoles: number; normalVolumeNm3: number; composition: Composition; componentMoles: Composition; revision: number } {
+export type InventorySummary = {
+  totalMoles: number; normalVolumeNm3: number; composition: Composition; componentMoles: Composition;
+  revision: number; appliedTransferIds: string[]; journal: AppliedTransfer[];
+};
+
+export function summarizeInventory(state: LedgerState): InventorySummary {
   const total = COMPONENTS.reduce((sum, key) => sum + state.componentMoles[key], 0);
   const composition = total === 0
     ? { H2: 0, CH4: 0, N2: 0, CO2: 0 }
     : Object.fromEntries(COMPONENTS.map((key) => [key, state.componentMoles[key] / total])) as Composition;
-  return { totalMoles: total, normalVolumeNm3: molesToAmount(total, 'Nm3'), composition, componentMoles: { ...state.componentMoles }, revision: state.revision };
+  return {
+    totalMoles: total,
+    normalVolumeNm3: molesToAmount(total, 'Nm3'),
+    composition,
+    componentMoles: { ...state.componentMoles },
+    revision: state.revision,
+    appliedTransferIds: [...state.appliedTransferIds],
+    journal: state.journal.map((entry) => ({ ...entry, componentMoles: { ...entry.componentMoles } })),
+  };
 }
 
 export function reconcileComponents(expected: Composition, observed: Composition, absoluteToleranceMol = 1e-6, relativeTolerance = 1e-9): Reconciliation {

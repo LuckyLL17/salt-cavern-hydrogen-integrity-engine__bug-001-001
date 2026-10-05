@@ -18,7 +18,7 @@ npm start
 ## API
 
 - `GET /health`
-- `POST /v1/inventory/transfer`：按成分、单位与转移编号重放物料台账
+- `POST /v1/inventory/transfer`：按事件时间与同刻序号确定性重放物料台账，重复载荷幂等、同号异载荷冲突，失败批次不留部分状态，返回含审计日志的库存摘要
 - `POST /v1/inventory/reconcile`：按成分容差核对库存
 - `POST /v1/dispatch/simulate`：按时间线积分注采、温度和压力状态并报告首次越界
 - `POST /v1/facility/allocate`：在优先级、最小流量、权重与爬坡约束下分配站场能力
