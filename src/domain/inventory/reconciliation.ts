@@ -17,6 +17,16 @@ export function summarizeInventory(state: LedgerState): { totalMoles: number; no
   return { totalMoles: total, normalVolumeNm3: molesToAmount(total, 'Nm3'), composition, componentMoles: { ...state.componentMoles }, revision: state.revision };
 }
 
+/** Re-derive component balances by replaying the signed audit journal. */
+export function journalComponentMoles(state: LedgerState): Composition {
+  const totals = { H2: 0, CH4: 0, N2: 0, CO2: 0 } as Composition;
+  for (const entry of state.journal) {
+    const sign = entry.direction === 'inject' ? 1 : -1;
+    for (const key of COMPONENTS) totals[key] += sign * entry.componentMoles[key];
+  }
+  return totals;
+}
+
 export function reconcileComponents(expected: Composition, observed: Composition, absoluteToleranceMol = 1e-6, relativeTolerance = 1e-9): Reconciliation {
   if (absoluteToleranceMol < 0 || relativeTolerance < 0) throw new DomainError('INVALID_RECONCILIATION_TOLERANCE', 'Reconciliation tolerances must be non-negative', 422);
   const componentVarianceMol = Object.fromEntries(COMPONENTS.map((key) => [key, observed[key] - expected[key]])) as Composition;

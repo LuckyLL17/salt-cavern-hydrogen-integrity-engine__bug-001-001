@@ -1,5 +1,5 @@
-import { replayTransfers, type Transfer } from '../domain/inventory/ledger.ts';
-import { summarizeInventory, reconcileComponents } from '../domain/inventory/reconciliation.ts';
+import { replayTransfers, verifyLedgerInvariants, type Transfer } from '../domain/inventory/ledger.ts';
+import { summarizeInventory, reconcileComponents, journalComponentMoles } from '../domain/inventory/reconciliation.ts';
 import { simulateDispatch, type DispatchLimits, type DispatchState } from '../domain/dispatch/simulator.ts';
 import { evaluateWellbore, maximumWellboreStress, type WellSegment } from '../domain/wellbore/evaluator.ts';
 import { correctSample } from '../domain/monitoring/correction.ts';
@@ -9,14 +9,25 @@ import { blendProducts } from '../domain/purity/blending.ts';
 import { sampleParameters, type UncertaintyInput } from '../domain/uncertainty/sampler.ts';
 import { cavernVolumeM3, cavernVolumeToDepth } from '../domain/geometry/interface-volume.ts';
 import { depthAtCumulativeVolume } from '../domain/geometry/inversion.ts';
-import { advanceGeoHistory, initialGeoState, type GeoInterval, type GeoParameters, type GeoState } from '../domain/geomechanics/history.ts';
+import { advanceGeoHistory, type GeoInterval, type GeoParameters, type GeoState } from '../domain/geomechanics/history.ts';
+import { initialGeoState } from '../domain/geomechanics/damage-state.ts';
 import { safetyPressureEnvelope } from '../domain/geomechanics/pressure-envelope.ts';
 import { allocateSharedCapacity, type FacilityRequest } from '../domain/facility/allocator.ts';
 import { solveGasState } from '../domain/dispatch/eos.ts';
 import type { Calibration, LeakEvidence, GeometryPoint, Composition } from '../domain/types.ts';
 
 export const assessmentService = {
-  inventory(transfers: Transfer[]) { return summarizeInventory(replayTransfers(transfers)); },
+  inventory(transfers: Transfer[]) {
+    const state = replayTransfers(transfers);
+    // Re-derive balances from signed audit-journal movements and reconcile them
+    // against the ledger before returning, so balances, journal and the
+    // reconciliation summary can never disagree after a replay.
+    verifyLedgerInvariants(state);
+    const summary = summarizeInventory(state);
+    const journalMoles = journalComponentMoles(state);
+    const reconciliation = reconcileComponents(journalMoles, state.componentMoles);
+    return { ...summary, journal: state.journal, journalMoles, reconciliation };
+  },
   reconcile(expected: Composition, observed: Composition, absoluteToleranceMol?: number, relativeTolerance?: number) { return reconcileComponents(expected, observed, absoluteToleranceMol, relativeTolerance); },
   dispatch(initial: DispatchState, steps: Parameters<typeof simulateDispatch>[1], limits: DispatchLimits) { return simulateDispatch(initial, steps, limits); },
   wellbore(segments: WellSegment[], surfacePressureKpa: number, ambientTemperatureK: number, shutInHours: number) {
